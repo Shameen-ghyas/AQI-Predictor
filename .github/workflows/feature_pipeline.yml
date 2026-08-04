@@ -41,8 +41,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install python-dotenv
+          # Install all requirements and ensure python-dotenv is present
+          python -m pip install -r requirements.txt python-dotenv
+          echo "--- pip freeze ---"
+          python -m pip freeze
+          echo "--- check python-dotenv ---"
+          python - <<'PY'
+          try:
+            import dotenv, sys
+            print('dotenv OK', getattr(dotenv, '__version__', 'no-version'))
+          except Exception as e:
+            print('dotenv import failed:', type(e).__name__, e)
+            sys.exit(2)
+          PY
 
       - name: Run feature script
         env:
