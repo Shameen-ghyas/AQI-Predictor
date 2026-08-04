@@ -20,11 +20,23 @@ def save_results(model_name, overall_metrics):
     if not os.path.exists(RESULTS_FILE):
         df = pd.DataFrame(columns=row.keys())
     else:
-        df = pd.read_csv(RESULTS_FILE)
+        try:
+            df = pd.read_csv(RESULTS_FILE)
+        except pd.errors.EmptyDataError:
+            df = pd.DataFrame(columns=row.keys())
+
+    if "Model" not in df.columns:
+        df["Model"] = pd.Series(dtype="object")
+
+    for col in row.keys():
+        if col not in df.columns:
+            df[col] = pd.NA
 
     # Update if model already exists
     if model_name in df["Model"].values:
-        df.loc[df["Model"] == model_name] = row
+        mask = df["Model"] == model_name
+        for col, value in row.items():
+            df.loc[mask, col] = value
     else:
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
 
