@@ -54,11 +54,13 @@ jobs:
             import dotenv
             import holidays
             import pyarrow
+            import confluent_kafka
             import sys
             print('python executable:', sys.executable)
             print('dotenv OK', getattr(dotenv, '__version__', 'no-version'))
             print('holidays OK', getattr(holidays, '__version__', 'no-version'))
             print('pyarrow OK', getattr(pyarrow, '__version__', 'no-version'))
+            print('confluent_kafka OK', getattr(confluent_kafka, '__version__', 'no-version'))
           except Exception as e:
             print('runtime import check failed:', type(e).__name__, e)
             sys.exit(2)
