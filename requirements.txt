@@ -14,3 +14,5 @@ python-dotenv>=1.0
 # optional / dev
 seaborn>=0.12
 pytest>=7.0
+streamlit
+shap
