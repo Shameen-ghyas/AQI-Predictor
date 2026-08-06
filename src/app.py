@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import hopsworks
 import os
-import subprocess
+# import subprocess
 import json
 import requests
 from dotenv import load_dotenv
@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-TF_PYTHON = r"C:\Users\Hp\anaconda3\envs\tensorflow_env\python.exe"
+# TF_PYTHON = r"C:\Users\Hp\anaconda3\envs\tensorflow_env\python.exe"
 KARACHI_LAT, KARACHI_LON = 24.8607, 67.0011
 
 
@@ -821,19 +821,24 @@ def load_features(_feature_group):
     return df.sort_values("time").reset_index(drop=True)
 
 
+import shap
+from tensorflow.keras.models import load_model
+
+@st.cache_resource(show_spinner=False)
+def load_gru_model(model_path):
+    return load_model(model_path, compile=False)
+
 def predict_with_gru(model_path, X, background):
-    input_data = json.dumps({"X": X.tolist(), "background": background.tolist()})
-    result = subprocess.run(
-        [TF_PYTHON, "src/predict_worker.py", model_path],
-        input=input_data,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        st.error(f"Prediction failed: {result.stderr}")
-        return None, None
-    output = json.loads(result.stdout)
-    return np.array(output["prediction"]), output["shap_importance"]
+    model = load_gru_model(model_path)
+    prediction = model.predict(X, verbose=0)
+
+    explainer = shap.GradientExplainer(model, background)
+    shap_values = explainer.shap_values(X)
+
+    shap_array = np.array(shap_values)
+    mean_importance = np.mean(np.abs(shap_array), axis=(0, 1, 3)).tolist()
+
+    return prediction, mean_importance
 
 
 @st.cache_data(ttl=900, show_spinner=False)
