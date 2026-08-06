@@ -1,4 +1,3 @@
-from altair import value
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,191 +10,451 @@ from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
 import ssl
+import joblib
 
 load_dotenv()
 
-st.set_page_config(page_title="AQI Pulse — Karachi", page_icon="🌈", layout="wide")
+st.set_page_config(
+    page_title="AQI Pulse — Karachi",
+    page_icon="◈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 TF_PYTHON = r"C:\Users\Hp\anaconda3\envs\tensorflow_env\python.exe"
 KARACHI_LAT, KARACHI_LON = 24.8607, 67.0011
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# THEME — "AQI Pulse": the palette IS the real-world AQI colour spectrum
-# (green → yellow → orange → red → purple → maroon), full saturation, on a
-# deep aurora backdrop. The spectrum ring is the signature element — the
-# forecast literally lights up the colour it represents.
+# THEME — Professional telemetry dashboard (Grafana / Datadog / Bloomberg style)
+# Dense, functional, flat dark surface. Color is reserved for AQI severity.
 # ────────────────────────────────────────────────────────────────────────────
 def inject_css():
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
-        :root{
-            --bg:#0A0818;
-            --panel:rgba(255,255,255,0.055);
-            --panel-solid:#14112A;
-            --line:rgba(255,255,255,0.10);
-            --ink:#F6F4FF;
-            --ink-dim:#B3ADD6;
-            --good:#2FE07C;
-            --moderate:#FFDB4D;
-            --sensitive:#FF9E3D;
-            --unhealthy:#FF4D6D;
-            --very:#B45CFF;
-            --hazard:#FF2E9E;
+        :root {
+            --bg: #0B0E14;
+            --surface: #12161F;
+            --surface-2: #181D28;
+            --border: #252B3A;
+            --border-strong: #323A4D;
+            --text: #E6EAF2;
+            --text-muted: #8B93A7;
+            --text-dim: #5C6578;
+            --good: #22C55E;
+            --moderate: #EAB308;
+            --sensitive: #F97316;
+            --unhealthy: #EF4444;
+            --very: #A855F7;
+            --hazard: #BE185D;
+            --accent: #3B82F6;
         }
 
-        html, body, [class*="css"]{ color:var(--ink); }
-        body, p, div, span, li { font-family:'Inter', sans-serif; }
-
-        .stApp{
-            background:var(--bg);
+        html, body, [class*="css"] {
+            color: var(--text);
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 14px;
+        }
+        .ring-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 160px;
+    height: 160px;
+}
+        .ring-svg path {
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .ring-svg path:hover {
+            opacity: 0.85;
+        }
+        .stApp {
+            background: var(--bg);
             background-image:
-                radial-gradient(900px 600px at 8% 0%, rgba(47,224,124,0.20), transparent 55%),
-                radial-gradient(900px 650px at 95% 10%, rgba(180,92,255,0.22), transparent 55%),
-                radial-gradient(800px 600px at 50% 100%, rgba(255,78,110,0.16), transparent 55%),
-                linear-gradient(180deg, #0A0818 0%, #100C24 100%);
-            background-attachment:fixed;
-            animation:hue 30s ease-in-out infinite alternate;
-        }
-        @keyframes hue{
-            0%{ filter:hue-rotate(0deg); }
-            100%{ filter:hue-rotate(14deg); }
+                linear-gradient(rgba(37, 43, 58, 0.35) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(37, 43, 58, 0.35) 1px, transparent 1px);
+            background-size: 48px 48px;
+            background-attachment: fixed;
         }
 
-        h1,h2,h3,h4,h5, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3{
-            font-family:'Outfit', sans-serif !important;
-            font-weight:700 !important;
-            letter-spacing:-0.01em;
-            color:var(--ink) !important;
+        h1, h2, h3, h4, h5, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+            font-family: 'IBM Plex Sans', sans-serif !important;
+            font-weight: 600 !important;
+            letter-spacing: -0.01em;
+            color: var(--text) !important;
         }
 
-        #MainMenu {visibility:hidden;}
-        footer {visibility:hidden;}
-        header[data-testid="stHeader"]{ background:transparent; }
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+        header[data-testid="stHeader"] { background: transparent; }
 
-        section[data-testid="stSidebar"]{
-            background:#0D0A1F;
-            border-right:1px solid var(--line);
+        section[data-testid="stSidebar"] {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
         }
-        section[data-testid="stSidebar"] input{
-            background:#1B1836 !important; border:1px solid rgba(255,255,255,0.15) !important; color:var(--ink) !important;
+        section[data-testid="stSidebar"] .stMarkdown,
+        section[data-testid="stSidebar"] label {
+            color: var(--text-muted) !important;
         }
-
-        button[data-baseweb="tab"]{ font-family:'Outfit', sans-serif; font-weight:600; }
-        div[data-baseweb="tab-highlight"]{
-            background:linear-gradient(90deg,var(--good),var(--moderate),var(--unhealthy),var(--very)) !important;
-            height:3px !important;
+        section[data-testid="stSidebar"] input {
+            background: var(--surface-2) !important;
+            border: 1px solid var(--border) !important;
+            color: var(--text) !important;
+            border-radius: 4px !important;
         }
-
-        .tag{
-            display:inline-block;font-family:'JetBrains Mono',monospace;font-size:0.68rem;
-            letter-spacing:0.09em;color:var(--ink-dim);text-transform:uppercase;
-            border:1px solid var(--line);border-radius:20px;padding:3px 11px;margin-bottom:10px;
-            background:rgba(255,255,255,0.03);
+        section[data-testid="stSidebar"] button {
+            border-radius: 4px !important;
         }
 
-        .panel{
-            background:var(--panel);border:1px solid var(--line);border-radius:18px;
-            padding:20px 22px;backdrop-filter:blur(10px);
+        /* Tabs */
+        button[data-baseweb="tab"] {
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+        div[data-baseweb="tab-highlight"] {
+            background: var(--accent) !important;
+            height: 2px !important;
+        }
+        div[data-baseweb="tab-list"] {
+            gap: 0 !important;
+            border-bottom: 1px solid var(--border);
         }
 
-        /* ---- hero ---- */
-        .hero-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:14px;}
-        .hero-title{font-family:'Outfit',sans-serif;font-size:1.7rem;font-weight:800;margin:0;
-            background:linear-gradient(90deg,#fff,var(--ink-dim));-webkit-background-clip:text;background-clip:text;}
-        .hero-sub{color:var(--ink-dim);font-size:0.82rem;}
-        .hero-temp{font-family:'JetBrains Mono',monospace;font-size:2.4rem;font-weight:700;}
-        .hero-cond{color:var(--ink-dim);font-size:0.85rem;text-align:right;}
+        /* Utility */
+        .tag {
+            display: inline-block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 2px 8px;
+            margin-bottom: 8px;
+            background: var(--surface-2);
+        }
 
-        /* ---- weather icon ---- */
-        .wicon{width:54px;height:54px;display:flex;align-items:center;justify-content:center;}
-        .sun{width:36px;height:36px;border-radius:50%;
-             background:radial-gradient(circle at 35% 35%, #FFF3B0, var(--moderate));
-             box-shadow:0 0 26px 6px rgba(255,219,77,0.55);animation:spin 14s linear infinite;}
-        @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-        .cloud{width:44px;height:22px;background:linear-gradient(135deg,#8FE1FF,#B45CFF);border-radius:40px;position:relative;animation:drift 4.5s ease-in-out infinite;opacity:0.9;}
-        .cloud:before,.cloud:after{content:'';position:absolute;background:inherit;border-radius:50%;}
-        .cloud:before{width:22px;height:22px;top:-11px;left:6px;}
-        .cloud:after{width:16px;height:16px;top:-8px;left:24px;}
-        @keyframes drift{0%,100%{transform:translateX(0);}50%{transform:translateX(6px);}}
-        .rain{position:relative;width:54px;height:44px;}
-        .rain .cloud{position:absolute;top:0;left:2px;}
-        .drop{width:3px;height:9px;background:var(--good);border-radius:2px;position:absolute;top:26px;animation:fall 1s linear infinite;}
-        .drop:nth-child(2){left:13px;animation-delay:0.2s;}
-        .drop:nth-child(3){left:24px;animation-delay:0.4s;}
-        .drop:nth-child(4){left:35px;animation-delay:0.6s;}
-        @keyframes fall{0%{transform:translateY(0);opacity:1;}100%{transform:translateY(14px);opacity:0;}}
-        .fog{width:54px;display:flex;flex-direction:column;gap:6px;justify-content:center;}
-        .fog-line{height:5px;border-radius:3px;background:linear-gradient(90deg,var(--very),var(--ink-dim));opacity:0.65;animation:driftf 3s ease-in-out infinite;}
-        .fog-line:nth-child(2){opacity:0.5;animation-delay:0.4s;}
-        .fog-line:nth-child(3){opacity:0.35;animation-delay:0.8s;}
-        @keyframes driftf{0%,100%{transform:translateX(-4px);}50%{transform:translateX(4px);}}
+        .section-header {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin: 16px 0 10px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
 
-        /* ---- spectrum ring (signature element) ---- */
-        .ring-box{display:flex;flex-direction:column;align-items:center;}
-        .ring-wrap{width:190px;height:190px;position:relative;}
-        .ring{
-            width:190px;height:190px;border-radius:50%;position:absolute;top:0;left:0;
-            background:conic-gradient(from 0deg,
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 14px 16px;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
+        }
+        .hero-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 220px;
+            gap: 24px;
+            align-items: center;
+        }
+        .hero-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .hero-aqi {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 52px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -0.02em;
+        }
+        .hero-level {
+            display: inline-block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 3px 10px;
+            border-radius: 3px;
+            margin-top: 8px;
+            color: #0B0E14;
+        }
+        .hero-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+        .hero-weather {
+            text-align: right;
+            border-left: 1px solid var(--border);
+            padding-left: 24px;
+        }
+        .hero-temp {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 36px;
+            font-weight: 600;
+            line-height: 1;
+        }
+        .hero-cond {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .hero-icon {
+            font-size: 28px;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        /* ── Spectrum ring (focal) ── */
+        .ring-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .ring-wrap {
+            width: 160px;
+            height: 160px;
+            position: relative;
+        }
+        .ring {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0; left: 0;
+            background: conic-gradient(from 0deg,
                 var(--good) 0deg 36deg,
                 var(--moderate) 36deg 72deg,
                 var(--sensitive) 72deg 108deg,
                 var(--unhealthy) 108deg 144deg,
                 var(--very) 144deg 216deg,
                 var(--hazard) 216deg 360deg);
-            filter:saturate(1.15);
         }
-        .ring-mask{
-            position:absolute;top:30px;left:30px;width:130px;height:130px;border-radius:50%;
-            background:var(--panel-solid);display:flex;flex-direction:column;align-items:center;justify-content:center;
-            border:1px solid var(--line);
+        .ring-mask {
+            position: absolute;
+            top: 22px; left: 22px;
+            width: 116px; height: 116px;
+            border-radius: 50%;
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
         }
-        .ring-pointer{
-            position:absolute;top:50%;left:50%;width:95px;height:2px;transform-origin:0 50%;
+        .ring-pointer {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 68px; height: 2px;
+            transform-origin: 0 50%;
+            background: transparent;
         }
-        .ring-pointer:after{
-            content:'';position:absolute;right:-7px;top:-7px;width:16px;height:16px;border-radius:50%;
-            background:#fff;box-shadow:0 0 14px 5px rgba(255,255,255,0.9);
-            animation:pulse 1.6s ease-in-out infinite;
+        .ring-pointer:after {
+            content: '';
+            position: absolute;
+            right: -5px; top: -5px;
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid var(--surface);
         }
-        @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.25);}}
-        .ring-value{font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:700;}
-        .ring-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;letter-spacing:0.08em;color:var(--ink-dim);text-transform:uppercase;text-align:center;padding:0 8px;}
+        .ring-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .ring-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            text-align: center;
+            margin-top: 4px;
+            padding: 0 6px;
+        }
 
-        /* ---- recommendation card ---- */
-        .rec-card{
-            border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:var(--panel);height:100%;
-            box-shadow:0 0 0 1px rgba(255,255,255,0.02), 0 8px 24px -12px var(--rec-color, var(--good));
-            border-top:3px solid var(--rec-color, var(--good));
+        /* ── Metric tiles ── */
+        .tile {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px 14px;
+            height: 100%;
         }
-        .rec-icon{font-size:1.6rem;}
-        .rec-title{font-family:'Outfit',sans-serif;font-weight:700;font-size:0.95rem;margin:8px 0 4px 0;}
-        .rec-text{color:var(--ink-dim);font-size:0.83rem;line-height:1.45;}
-
-        /* ---- day forecast card ---- */
-        .day-card{
-            border:1px solid var(--line);border-radius:18px;padding:18px;background:var(--panel);text-align:center;
-            box-shadow:0 8px 28px -14px var(--day-color, var(--good));
+        .tile-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 4px;
         }
-        .day-label{font-family:'JetBrains Mono',monospace;color:var(--ink-dim);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;}
-        .day-value{font-family:'JetBrains Mono',monospace;font-size:2.2rem;font-weight:700;margin:6px 0;
-            color:var(--day-color, var(--good));}
-        .day-level{display:inline-block;padding:3px 11px;border-radius:20px;font-size:0.72rem;font-weight:700;
-            font-family:'JetBrains Mono',monospace;background:var(--day-color, var(--good));color:#0A0818;}
+        .tile-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 26px;
+            font-weight: 600;
+            line-height: 1.15;
+            color: var(--text);
+        }
+        .tile-unit {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-dim);
+            margin-left: 2px;
+        }
 
-        /* ---- feature tile ---- */
-        .tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel);}
-        .tile-label{font-family:'JetBrains Mono',monospace;color:var(--ink-dim);font-size:0.66rem;letter-spacing:0.05em;text-transform:uppercase;}
-        .tile-value{font-family:'JetBrains Mono',monospace;font-size:1.25rem;font-weight:700;margin-top:2px;
-            background:linear-gradient(90deg,var(--good),var(--very));-webkit-background-clip:text;background-clip:text;color:transparent;}
+        /* ── Day forecast cards ── */
+        .day-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 16px 14px;
+            text-align: center;
+            border-top: 3px solid var(--day-color, var(--good));
+        }
+        .day-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .day-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1.1;
+            margin: 8px 0 6px 0;
+            color: var(--day-color, var(--good));
+        }
+        .day-level {
+            display: inline-block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: var(--day-color, var(--good));
+            color: #0B0E14;
+        }
 
-        .status-row{display:flex;align-items:center;gap:8px;font-size:0.78rem;margin-bottom:5px;color:var(--ink-dim);}
-        .dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good);}
+        /* ── Recommendation / alert cards ── */
+        .rec-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--rec-color, var(--good));
+            border-radius: 4px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+        }
+        .rec-icon {
+            font-size: 18px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .rec-title {
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-weight: 600;
+            font-size: 13px;
+            display: inline;
+        }
+        .rec-text {
+            color: var(--text-muted);
+            font-size: 12.5px;
+            line-height: 1.4;
+            margin-top: 4px;
+        }
 
-        hr{border-color:var(--line);}
+        /* ── Status ── */
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            margin-bottom: 6px;
+            color: var(--text-muted);
+        }
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--good);
+            flex-shrink: 0;
+        }
+
+        /* ── SHAP bars ── */
+        .shap-row {
+            margin-bottom: 10px;
+        }
+        .shap-meta {
+            display: flex;
+            justify-content: space-between;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        .shap-bar-bg {
+            background: var(--surface-2);
+            border-radius: 2px;
+            height: 6px;
+        }
+        .shap-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: linear-gradient(90deg, var(--good), var(--moderate), var(--unhealthy));
+        }
+
+        /* Streamlit overrides for density */
+        .stTabs [data-baseweb="tab-panel"] {
+            padding-top: 12px;
+        }
+        div[data-testid="stExpander"] {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--surface);
+        }
+        hr {
+            border-color: var(--border);
+            margin: 12px 0;
+        }
+        .stAlert {
+            border-radius: 4px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -203,6 +462,16 @@ def inject_css():
 
 
 LEVEL_COLORS = {
+    "Good": "var(--good)",
+    "Moderate": "var(--moderate)",
+    "Unhealthy for Sensitive Groups": "var(--sensitive)",
+    "Unhealthy": "var(--unhealthy)",
+    "Very Unhealthy": "var(--very)",
+    "Hazardous": "var(--hazard)",
+}
+
+# Simplified mapping used by aqi_level (matches original thresholds)
+LEVEL_COLORS_SIMPLE = {
     "Good": "var(--good)",
     "Unhealthy": "var(--sensitive)",
     "Very Unhealthy": "var(--unhealthy)",
@@ -217,24 +486,60 @@ def aqi_level(value):
         return "Very Unhealthy", "Limit outdoor activity, wear a mask, keep windows closed."
     elif value > 150:
         return "Unhealthy", "Sensitive groups should reduce prolonged outdoor exertion."
+    elif value > 100:
+        return "Unhealthy for Sensitive Groups", "Sensitive individuals should limit outdoor activity."
+    elif value > 50:
+        return "Moderate", "Air quality is acceptable; unusually sensitive people should take care."
     else:
         return "Good", "Air quality is safe for normal outdoor activity."
 
 
+def aqi_color(value):
+    level, _ = aqi_level(value)
+    return LEVEL_COLORS.get(level, LEVEL_COLORS_SIMPLE.get(level, "var(--text)"))
+
+
 # ────────────────────────────────────────────────────────────────────────────
-# SPECTRUM RING (signature visual element) — full AQI colour scale as a ring,
-# with a glowing marker at the forecast value's position.
+# SPECTRUM RING
 # ────────────────────────────────────────────────────────────────────────────
-def render_ring(value, label="TOMORROW · PEAK AQI"):
-    value = max(0, min(value, 500))
+def render_ring(value, label="PEAK · 3-DAY"):
+    value = max(0, min(float(value), 500))
     angle = (value / 500.0) * 360
     level, _ = aqi_level(value)
-    color = LEVEL_COLORS[level]
+    color = aqi_color(value)
+
+    # SVG arcs (start/end angles match the original conic-gradient)
+    # Each <title> becomes the hover tooltip
     st.markdown(
         f"""
         <div class="ring-box">
           <div class="ring-wrap">
-            <div class="ring"></div>
+            <svg class="ring-svg" viewBox="0 0 160 160" width="160" height="160">
+              <!-- Good 0-50 -->
+              <path d="M80,80 L80,8 A72,72 0 0,1 130.2,28.8 Z" fill="var(--good)">
+                <title>Good · AQI 0–50 · Air quality is satisfactory</title>
+              </path>
+              <!-- Moderate 51-100 -->
+              <path d="M80,80 L130.2,28.8 A72,72 0 0,1 151.2,80 Z" fill="var(--moderate)">
+                <title>Moderate · AQI 51–100 · Acceptable; sensitive people may notice</title>
+              </path>
+              <!-- Sensitive 101-150 -->
+              <path d="M80,80 L151.2,80 A72,72 0 0,1 130.2,131.2 Z" fill="var(--sensitive)">
+                <title>Unhealthy for Sensitive Groups · AQI 101–150</title>
+              </path>
+              <!-- Unhealthy 151-200 -->
+              <path d="M80,80 L130.2,131.2 A72,72 0 0,1 80,152 Z" fill="var(--unhealthy)">
+                <title>Unhealthy · AQI 151–200 · Everyone may experience effects</title>
+              </path>
+              <!-- Very Unhealthy 201-300 -->
+              <path d="M80,80 L80,152 A72,72 0 0,1 28.8,131.2 Z" fill="var(--very)">
+                <title>Very Unhealthy · AQI 201–300 · Health warnings of emergency conditions</title>
+              </path>
+              <!-- Hazardous 301-500 -->
+              <path d="M80,80 L28.8,131.2 A72,72 0 0,1 80,8 Z" fill="var(--hazard)">
+                <title>Hazardous · AQI 301–500 · Serious health effects for everyone</title>
+              </path>
+            </svg>
             <div class="ring-pointer" style="transform:rotate(calc(-90deg + {angle}deg));"></div>
             <div class="ring-mask">
               <div class="ring-value" style="color:{color};">{value:.0f}</div>
@@ -251,12 +556,12 @@ def render_ring(value, label="TOMORROW · PEAK AQI"):
 # WEATHER
 # ────────────────────────────────────────────────────────────────────────────
 WEATHER_CODE_MAP = {
-    range(0, 1): ("clear", "Clear sky"),
+    range(0, 1): ("clear", "Clear"),
     range(1, 4): ("cloudy", "Partly cloudy"),
-    range(45, 49): ("fog", "Foggy"),
+    range(45, 49): ("fog", "Fog"),
     range(51, 68): ("rain", "Drizzle / rain"),
     range(71, 78): ("rain", "Snow"),
-    range(80, 83): ("rain", "Rain showers"),
+    range(80, 83): ("rain", "Showers"),
     range(95, 100): ("rain", "Thunderstorm"),
 }
 
@@ -279,55 +584,67 @@ def get_weather():
         r.raise_for_status()
         cw = r.json()["current_weather"]
         kind, label = classify_weather(int(cw["weathercode"]))
-        return {"temp": cw["temperature"], "wind": cw["windspeed"], "kind": kind, "label": label, "ok": True}
+        return {
+            "temp": cw["temperature"],
+            "wind": cw["windspeed"],
+            "kind": kind,
+            "label": label,
+            "ok": True,
+        }
     except Exception:
         return {"temp": None, "wind": None, "kind": "cloudy", "label": "Unavailable", "ok": False}
 
 
-def weather_icon_html(kind):
-    if kind == "clear":
-        return '<div class="wicon"><div class="sun"></div></div>'
-    if kind == "fog":
-        return '<div class="wicon"><div class="fog"><div class="fog-line" style="width:38px"></div><div class="fog-line" style="width:28px"></div><div class="fog-line" style="width:32px"></div></div></div>'
-    if kind == "rain":
-        return '<div class="wicon"><div class="rain"><div class="cloud"></div><div class="drop"></div><div class="drop"></div><div class="drop"></div><div class="drop"></div></div></div>'
-    return '<div class="wicon"><div class="cloud"></div></div>'
+def weather_icon(kind):
+    # Consistent simple symbols (no mixed emoji styles)
+    icons = {
+        "clear": "☀",
+        "cloudy": "☁",
+        "rain": "☂",
+        "fog": "≡",
+    }
+    return icons.get(kind, "☁")
 
 
-def render_hero(weather, gauge_value):
-    icon_html = weather_icon_html(weather["kind"])
+def render_hero(weather, current_aqi, gauge_value):
+    # Current AQI from latest reading
+    if current_aqi is not None:
+        level, _ = aqi_level(current_aqi)
+        color = aqi_color(current_aqi)
+        aqi_html = f'<div class="hero-aqi" style="color:{color};">{current_aqi:.0f}</div>'
+        level_html = f'<div class="hero-level" style="background:{color};">{level}</div>'
+    else:
+        aqi_html = '<div class="hero-aqi" style="color:var(--text-dim);">—</div>'
+        level_html = ""
+
     temp_html = f'{weather["temp"]:.0f}°C' if weather["ok"] else "—"
-    left, right = st.columns([1.4, 1])
-    with left:
-        st.markdown('<span class="tag">🜁 Live · Karachi</span>', unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div class="panel" style="margin-bottom:16px;">
-              <div class="hero-head">
-                <div style="display:flex;align-items:center;gap:14px;">
-                  {icon_html}
-                  <div>
-                    <p class="hero-title">Karachi</p>
-                    <p class="hero-sub">Ambient conditions · refreshes every 30 min</p>
-                  </div>
-                </div>
-                <div>
-                  <div class="hero-temp" style="text-align:right;">{temp_html}</div>
-                  <div class="hero-cond">{weather["label"]}{f" · wind {weather['wind']:.0f} km/h" if weather["ok"] else ""}</div>
-                </div>
-              </div>
+    wind_html = f'{weather["wind"]:.0f} km/h' if weather["ok"] else "—"
+    icon = weather_icon(weather["kind"])
+
+    st.markdown(
+        f"""
+        <div class="hero">
+          <div class="hero-grid">
+            <div>
+              <div class="hero-label">Current US AQI · Karachi</div>
+              {aqi_html}
+              {level_html}
+              <div class="hero-meta">Live sensor feed · updates on refresh</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with right:
-        st.markdown('<span class="tag">Spectrum forecast</span>', unsafe_allow_html=True)
-        st.markdown('<div class="panel" style="display:flex;justify-content:center;">', unsafe_allow_html=True)
-        if gauge_value is not None:
-            render_ring(gauge_value)
-        else:
-            st.caption("The ring lights up once tomorrow's forecast is ready.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            <div class="hero-weather">
+              <div class="hero-icon">{icon}</div>
+              <div class="hero-temp">{temp_html}</div>
+              <div class="hero-cond">{weather["label"]} · {wind_html}</div>
+            </div>
+            <div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if gauge_value is not None:
+        render_ring(gauge_value)
+    else:
+        st.caption("Forecast ring appears when model output is ready.")
+    st.markdown("</div></div></div>", unsafe_allow_html=True)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -338,27 +655,29 @@ def build_recommendations(worst_aqi, weather_kind):
     level, _ = aqi_level(worst_aqi)
 
     if level == "Hazardous":
-        recs.append(("😷", "Wear an N95 mask", "AQI is hazardous — cover up before stepping outside.", "var(--hazard)"))
-        recs.append(("🚪", "Stay indoors", "Avoid outdoor activity entirely until levels drop.", "var(--hazard)"))
-        recs.append(("🌬️", "Run an air purifier", "Keep indoor air clean, especially in bedrooms.", "var(--hazard)"))
+        recs.append(("▣", "Wear N95 mask", "AQI hazardous — cover up before going outside.", "var(--hazard)"))
+        recs.append(("▣", "Stay indoors", "Avoid outdoor activity until levels drop.", "var(--hazard)"))
+        recs.append(("▣", "Run air purifier", "Keep indoor air clean, especially bedrooms.", "var(--hazard)"))
     elif level == "Very Unhealthy":
-        recs.append(("😷", "Mask up outdoors", "Wear a mask if you need to step out for long.", "var(--unhealthy)"))
-        recs.append(("🪟", "Keep windows closed", "Limit outdoor air from entering your home.", "var(--unhealthy)"))
-    elif level == "Unhealthy":
-        recs.append(("🏃", "Limit prolonged exertion", "Sensitive groups should shorten outdoor workouts.", "var(--sensitive)"))
-        recs.append(("😷", "Carry a mask", "Useful during peak traffic hours.", "var(--sensitive)"))
+        recs.append(("▣", "Mask outdoors", "Wear a mask if stepping out for extended periods.", "var(--very)"))
+        recs.append(("▣", "Keep windows closed", "Limit outdoor air entering the home.", "var(--very)"))
+    elif level in ("Unhealthy", "Unhealthy for Sensitive Groups"):
+        recs.append(("▣", "Limit prolonged exertion", "Sensitive groups should shorten outdoor workouts.", "var(--sensitive)"))
+        recs.append(("▣", "Carry a mask", "Useful during peak traffic hours.", "var(--sensitive)"))
+    elif level == "Moderate":
+        recs.append(("▣", "Monitor sensitive groups", "Unusually sensitive people should take care outdoors.", "var(--moderate)"))
     else:
-        recs.append(("🌳", "Enjoy the outdoors", "Air quality is safe for normal activity today.", "var(--good)"))
+        recs.append(("▣", "Normal outdoor activity", "Air quality is safe for usual routines.", "var(--good)"))
 
     if weather_kind == "rain":
-        recs.append(("☂️", "Carry an umbrella", "Rain expected — pack one before heading out.", "var(--good)"))
+        recs.append(("▣", "Carry umbrella", "Precipitation expected.", "var(--accent)"))
     elif weather_kind == "clear":
-        recs.append(("🧴", "Use sunscreen", "Clear skies mean stronger UV exposure midday.", "var(--moderate)"))
+        recs.append(("▣", "UV exposure", "Clear skies — consider sun protection midday.", "var(--moderate)"))
     elif weather_kind == "fog":
-        recs.append(("🚗", "Drive carefully", "Low visibility on the roads this morning.", "var(--very)"))
+        recs.append(("▣", "Low visibility", "Drive carefully this morning.", "var(--very)"))
 
-    if weather_kind != "rain" and level in ("Unhealthy", "Very Unhealthy", "Hazardous"):
-        recs.append(("🌀", "Use a fan/AC indoors", "Keep air circulating instead of opening windows.", "var(--moderate)"))
+    if weather_kind != "rain" and level in ("Unhealthy", "Very Unhealthy", "Hazardous", "Unhealthy for Sensitive Groups"):
+        recs.append(("▣", "Indoor air circulation", "Prefer fan/AC over open windows.", "var(--moderate)"))
 
     return recs[:6]
 
@@ -369,9 +688,9 @@ def render_recommendation_cards(recs):
         with cols[i % len(cols)]:
             st.markdown(
                 f"""
-                <div class="rec-card" style="--rec-color:{color}; margin-bottom:14px;">
-                    <div class="rec-icon">{icon}</div>
-                    <div class="rec-title">{title}</div>
+                <div class="rec-card" style="--rec-color:{color};">
+                    <span class="rec-icon">{icon}</span>
+                    <span class="rec-title">{title}</span>
                     <div class="rec-text">{text}</div>
                 </div>
                 """,
@@ -381,7 +700,7 @@ def render_recommendation_cards(recs):
 
 def render_day_card(day, value):
     level, _ = aqi_level(value)
-    color = LEVEL_COLORS[level]
+    color = aqi_color(value)
     st.markdown(
         f"""
         <div class="day-card" style="--day-color:{color};">
@@ -392,6 +711,58 @@ def render_day_card(day, value):
         """,
         unsafe_allow_html=True,
     )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# FEATURE CATEGORIES
+# ────────────────────────────────────────────────────────────────────────────
+def categorize_features(feature_cols):
+    pollutants = []
+    weather = []
+    temporal = []
+    other = []
+    pollutant_keys = ("pm", "no2", "so2", "o3", "co", "nh3", "aqi", "pollut")
+    weather_keys = ("temp", "humidity", "wind", "pressure", "precip", "cloud", "dew", "uv", "visib")
+    temporal_keys = ("hour", "day", "month", "week", "sin", "cos", "is_", "lag", "rolling")
+
+    for c in feature_cols:
+        cl = c.lower()
+        if any(k in cl for k in pollutant_keys):
+            pollutants.append(c)
+        elif any(k in cl for k in weather_keys):
+            weather.append(c)
+        elif any(k in cl for k in temporal_keys):
+            temporal.append(c)
+        else:
+            other.append(c)
+    return {
+        "Pollutants": pollutants,
+        "Weather & Met": weather,
+        "Temporal / Engineered": temporal,
+        "Other": other,
+    }
+
+
+def render_metric_tiles(latest, cols_list, n_cols=4):
+    if not cols_list:
+        return
+    cols = st.columns(n_cols)
+    for i, col in enumerate(cols_list):
+        val = latest[col]
+        if isinstance(val, (int, float, np.floating)):
+            display_val = f"{val:.2f}" if abs(val) < 1000 else f"{val:.1f}"
+        else:
+            display_val = str(val)
+        with cols[i % n_cols]:
+            st.markdown(
+                f"""
+                <div class="tile" style="margin-bottom:10px;">
+                    <div class="tile-label">{col.replace('_', ' ')}</div>
+                    <div class="tile-value">{display_val}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -411,8 +782,7 @@ def send_alert_email(to_email, subject, body):
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# HOPSWORKS / MODEL LOADING — cached so they run once per session, not once
-# per rerun. This is the main lever for perceived speed.
+# HOPSWORKS / MODEL (cached)
 # ────────────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def connect_to_hopsworks():
@@ -433,9 +803,6 @@ def get_model_path(_project):
     return os.path.join(model_dir, "gru_model.h5")
 
 
-import joblib
-
-
 @st.cache_resource(show_spinner=False)
 def get_scaler(_project):
     mr = _project.get_model_registry()
@@ -444,11 +811,14 @@ def get_scaler(_project):
     return joblib.load(os.path.join(model_dir, "scaler.pkl"))
 
 
-# Cache the feature-store READ itself — this was re-fetched over the network
-# on every single rerun before (e.g. every keystroke in the email box).
 @st.cache_data(ttl=900, show_spinner=False)
 def load_features(_feature_group):
-    return _feature_group.read()
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(hours=150)
+    query = _feature_group.filter(_feature_group.time >= cutoff)
+    df = query.read()
+    df["time"] = pd.to_datetime(df["time"])
+    return df.sort_values("time").reset_index(drop=True)
 
 
 def predict_with_gru(model_path, X, background):
@@ -466,9 +836,6 @@ def predict_with_gru(model_path, X, background):
     return np.array(output["prediction"]), output["shap_importance"]
 
 
-# Cache the (slow) subprocess prediction call itself, keyed only on the
-# latest timestamp in the data — so it only re-runs when new data actually
-# lands, not on every widget interaction. Leading underscore = not hashed.
 @st.cache_data(ttl=900, show_spinner=False)
 def run_prediction(model_path, latest_ts, _X, _background):
     return predict_with_gru(model_path, _X, _background)
@@ -480,12 +847,12 @@ def run_prediction(model_path, latest_ts, _X, _background):
 inject_css()
 
 with st.sidebar:
-    st.markdown("### 🌈 AQI PULSE")
+    st.markdown("### ◈ AQI PULSE")
     st.caption("Karachi air-quality telemetry")
     st.markdown("---")
     status_placeholder = st.empty()
     st.markdown("---")
-    if st.button("↻ Refresh data now", use_container_width=True):
+    if st.button("↻ Refresh data", use_container_width=True):
         load_features.clear()
         run_prediction.clear()
         get_weather.clear()
@@ -513,11 +880,15 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown("---")
-    st.markdown("**🔔 Hazard alerts**")
+    st.markdown("**Hazard alerts**")
     with st.form("alert_form", clear_on_submit=False):
-        user_email = st.text_input("Email for AQI alerts", placeholder="you@example.com", label_visibility="collapsed")
-        submitted = st.form_submit_button("Send me this forecast", use_container_width=True)
-    st.caption("Submitting sends the current 3-day forecast once — it won't resend on its own.")
+        user_email = st.text_input(
+            "Email for AQI alerts",
+            placeholder="you@example.com",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button("Send this forecast", use_container_width=True)
+    st.caption("Sends the current 3-day forecast once. Does not auto-resend.")
 
 feature_cols = [c for c in df.columns if c not in ["time", "aqi_day1", "aqi_day2", "aqi_day3"]]
 recent_data = df[feature_cols].tail(24)
@@ -530,12 +901,22 @@ if len(recent_data) >= 24:
     background_scaled = scaler.transform(background_data)
     background_sequence = np.expand_dims(background_scaled, axis=0)
     with st.spinner("Running forecast model..."):
-        prediction, shap_importance = run_prediction(model_path, latest_ts, X_input, background_sequence)
+        prediction, shap_importance = run_prediction(
+            model_path, latest_ts, X_input, background_sequence
+        )
 
 gauge_value = float(np.max(prediction[0])) if prediction is not None else None
-render_hero(weather, gauge_value)
 
-# ---- Send email only once per new forecast, on explicit form submit ----
+# Current AQI from latest row if available
+current_aqi = None
+if len(df) and "us_aqi" in df.columns:
+    current_aqi = float(df["us_aqi"].iloc[-1])
+elif len(df) and "aqi" in df.columns:
+    current_aqi = float(df["aqi"].iloc[-1])
+
+render_hero(weather, current_aqi, gauge_value)
+
+# Email send (once per forecast + email)
 if submitted and user_email and prediction is not None:
     if st.session_state.get("alert_sent_for") != (latest_ts, user_email):
         alert_messages = []
@@ -555,60 +936,56 @@ if submitted and user_email and prediction is not None:
             st.error(f"Could not send alert email: {e}")
 
 tab_overview, tab_forecast, tab_features, tab_history = st.tabs(
-    ["🏠 Overview", "📈 Forecast & alerts", "🔍 Feature insights", "📊 History"]
+    ["Overview", "Forecast", "Feature insights", "History"]
 )
 
-# ---- Overview: every feature covers the page, not just a handful ----
+# ── Overview ──
 with tab_overview:
-    st.markdown('<span class="tag">All sensor channels · latest reading</span>', unsafe_allow_html=True)
-    latest = df.iloc[-1]
-    n_cols = 5
-    cols = st.columns(n_cols)
-    for i, col in enumerate(feature_cols):
-        val = latest[col]
-        display_val = f"{val:.2f}" if isinstance(val, (int, float, np.floating)) else str(val)
-        with cols[i % n_cols]:
-            st.markdown(
-                f"""
-                <div class="tile" style="margin-bottom:12px;">
-                    <div class="tile-label">{col.replace('_',' ')}</div>
-                    <div class="tile-value">{display_val}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    st.markdown('<span class="tag">Latest sensor snapshot</span>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    if prediction is not None:
-        st.markdown('<span class="tag">Tomorrow at a glance</span>', unsafe_allow_html=True)
-        render_recommendation_cards(build_recommendations(gauge_value, weather["kind"]))
+    if len(df):
+        latest = df.iloc[-1]
+        categories = categorize_features(feature_cols)
+
+        for cat_name, cols_list in categories.items():
+            if not cols_list:
+                continue
+            st.markdown(f'<div class="section-header">{cat_name}</div>', unsafe_allow_html=True)
+            render_metric_tiles(latest, cols_list, n_cols=5)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if prediction is not None:
+            st.markdown('<span class="tag">Recommended actions</span>', unsafe_allow_html=True)
+            render_recommendation_cards(build_recommendations(gauge_value, weather["kind"]))
+        else:
+            st.info("Need 24 hours of recent data for a prediction.")
+
+        with st.expander("Raw latest rows"):
+            st.dataframe(df.tail(10), use_container_width=True)
     else:
-        st.info("Not enough recent data (need 24 hours) to make a prediction yet.")
+        st.warning("No feature data available.")
 
-    with st.expander("View raw latest rows"):
-        st.dataframe(df.tail(10), use_container_width=True)
-
-# ---- Forecast ----
+# ── Forecast ──
 with tab_forecast:
     if prediction is None:
         st.warning("Not enough recent data (need 24 hours) to make a prediction.")
     else:
-        st.markdown('<span class="tag">3-day forecast</span>', unsafe_allow_html=True)
+        st.markdown('<span class="tag">3-day AQI forecast</span>', unsafe_allow_html=True)
         day_cols = st.columns(len(prediction[0]))
         for i, val in enumerate(prediction[0], start=1):
             with day_cols[i - 1]:
                 render_day_card(i, val)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<span class="tag">Recommended precautions</span>', unsafe_allow_html=True)
+        st.markdown('<span class="tag">Precautions</span>', unsafe_allow_html=True)
         render_recommendation_cards(build_recommendations(gauge_value, weather["kind"]))
 
-# ---- Feature insights ----
+# ── Feature insights ──
 with tab_features:
     if shap_importance is None:
-        st.info("Feature importance will appear here once a forecast is generated.")
+        st.info("Feature importance appears once a forecast is generated.")
     else:
-        st.markdown('<span class="tag">What is driving the forecast</span>', unsafe_allow_html=True)
+        st.markdown('<span class="tag">SHAP · drivers of current forecast</span>', unsafe_allow_html=True)
         shap_df = pd.DataFrame(
             {"feature": feature_cols, "importance": shap_importance}
         ).sort_values("importance", ascending=False)
@@ -618,30 +995,33 @@ with tab_features:
             pct = abs(row["importance"]) / max_imp * 100
             st.markdown(
                 f"""
-                <div style="margin-bottom:10px;">
-                  <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:3px;font-family:'JetBrains Mono',monospace;">
-                    <span>{row['feature'].replace('_',' ')}</span>
-                    <span style="color:var(--ink-dim);">{row['importance']:.3f}</span>
+                <div class="shap-row">
+                  <div class="shap-meta">
+                    <span>{row['feature'].replace('_', ' ')}</span>
+                    <span style="color:var(--text-muted);">{row['importance']:.3f}</span>
                   </div>
-                  <div style="background:rgba(255,255,255,0.08);border-radius:6px;height:8px;">
-                    <div style="width:{pct:.0f}%;background:linear-gradient(90deg,var(--good),var(--moderate),var(--unhealthy),var(--very));height:100%;border-radius:6px;"></div>
+                  <div class="shap-bar-bg">
+                    <div class="shap-bar-fill" style="width:{pct:.0f}%;"></div>
                   </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        with st.expander("View full feature importance table"):
+        with st.expander("Full importance table"):
             st.dataframe(
-                shap_df.style.background_gradient(cmap="plasma", subset=["importance"]),
+                shap_df.style.background_gradient(cmap="viridis", subset=["importance"]),
                 use_container_width=True,
             )
         st.bar_chart(shap_df.set_index("feature"))
 
-# ---- History ----
+# ── History ──
 with tab_history:
-    st.markdown('<span class="tag">Historical AQI · last 72 hours</span>', unsafe_allow_html=True)
-    history_df = df[["time", "us_aqi"]].tail(72).copy()
-    history_df["time"] = pd.to_datetime(history_df["time"])
-    history_df = history_df.set_index("time")
-    st.line_chart(history_df.rename(columns={"us_aqi": "Actual AQI"}))
+    st.markdown('<span class="tag">Historical US AQI · last 72 h</span>', unsafe_allow_html=True)
+    if "us_aqi" in df.columns:
+        history_df = df[["time", "us_aqi"]].tail(72).copy()
+        history_df["time"] = pd.to_datetime(history_df["time"])
+        history_df = history_df.set_index("time")
+        st.line_chart(history_df.rename(columns={"us_aqi": "Actual AQI"}))
+    else:
+        st.info("No us_aqi column found in the feature group.")
