@@ -45,6 +45,9 @@ if __name__ == "__main__":
     df_features = build_features(df_raw)
     df_features = handle_lag_nulls(df_features)   # organized null handling
    
+    numeric_cols = df_features.select_dtypes(include="number").columns
+    df_features[numeric_cols] = df_features[numeric_cols].astype("float64")
+
     df_features["aqi_day1"] = df_features["us_aqi"].shift(-1)
     df_features["aqi_day2"] = df_features["us_aqi"].shift(-2)
     df_features["aqi_day3"] = df_features["us_aqi"].shift(-3)
