@@ -1067,7 +1067,7 @@ with tab_history:
         combined_df = combined_df.join(pred_df, how="outer") if len(combined_df) else pred_df
 
     if len(combined_df):
-        st.line_chart(combined_df)
+        st.line_chart(combined_df, color=["#DC2626", "#2563EB"])
     else:
         st.info("Not enough data to show the comparison chart.")
 
