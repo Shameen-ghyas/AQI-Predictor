@@ -37,22 +37,22 @@ def inject_css():
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
         :root {
-            --bg: #0B0E14;
-            --surface: #12161F;
-            --surface-2: #181D28;
-            --border: #252B3A;
-            --border-strong: #323A4D;
-            --text: #E6EAF2;
-            --text-muted: #8B93A7;
-            --text-dim: #5C6578;
-            --good: #22C55E;
-            --moderate: #EAB308;
-            --sensitive: #F97316;
-            --unhealthy: #EF4444;
-            --very: #A855F7;
-            --hazard: #BE185D;
-            --accent: #3B82F6;
-        }
+    --bg: #F0F4F8;
+    --surface: #FFFFFF;
+    --surface-2: #E8F0FE;
+    --border: #D5DEE8;
+    --border-strong: #B8C6D6;
+    --text: #1A2332;
+    --text-muted: #5C6B7F;
+    --text-dim: #8B96A5;
+    --good: #16A34A;
+    --moderate: #CA8A04;
+    --sensitive: #EA580C;
+    --unhealthy: #DC2626;
+    --very: #9333EA;
+    --hazard: #BE185D;
+    --accent: #2563EB;
+}
 
         html, body, [class*="css"] {
             color: var(--text);
@@ -1050,22 +1050,28 @@ def load_predictions_log(_predictions_fg):
     return pred_df.sort_values("prediction_time")
 
 with tab_history:
-    st.markdown('<span class="tag">Historical US AQI · last 72 h</span>', unsafe_allow_html=True)
-    if "us_aqi" in df.columns:
-        history_df = df[["time", "us_aqi"]].tail(72).copy()
-        history_df["time"] = pd.to_datetime(history_df["time"])
-        history_df = history_df.set_index("time")
-        st.line_chart(history_df.rename(columns={"us_aqi": "Actual AQI"}))
-    else:
-        st.info("No us_aqi column found in the feature group.")
+    st.markdown('<span class="tag">Actual vs Predicted AQI</span>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<span class="tag">Predicted AQI (Day 1) · logged history</span>', unsafe_allow_html=True)
+    combined_df = pd.DataFrame()
+
+    if "us_aqi" in df.columns:
+        actual_df = df[["time", "us_aqi"]].tail(72).copy()
+        actual_df["time"] = pd.to_datetime(actual_df["time"])
+        actual_df = actual_df.rename(columns={"us_aqi": "Actual AQI"}).set_index("time")
+        combined_df = actual_df
+
     pred_log = load_predictions_log(predictions_fg)
     if len(pred_log):
-        pred_chart_df = pred_log[["prediction_time", "aqi_day1"]].set_index("prediction_time")
-        st.line_chart(pred_chart_df.rename(columns={"aqi_day1": "Predicted AQI (Day 1)"}))
+        pred_df = pred_log[["prediction_time", "aqi_day1"]].copy()
+        pred_df = pred_df.rename(columns={"prediction_time": "time", "aqi_day1": "Predicted AQI"}).set_index("time")
+        combined_df = combined_df.join(pred_df, how="outer") if len(combined_df) else pred_df
 
+    if len(combined_df):
+        st.line_chart(combined_df)
+    else:
+        st.info("Not enough data to show the comparison chart.")
+
+    if len(pred_log):
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<span class="tag">Browse a previous prediction</span>', unsafe_allow_html=True)
         options = pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M").tolist()[::-1]
@@ -1074,4 +1080,3 @@ with tab_history:
         st.write(f"Day 1: {selected_row['aqi_day1']:.1f}  |  Day 2: {selected_row['aqi_day2']:.1f}  |  Day 3: {selected_row['aqi_day3']:.1f}")
     else:
         st.info("No predictions logged yet.")
-
