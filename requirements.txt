@@ -9,7 +9,7 @@ requests>=2.28
 holidays>=0.13
 pyarrow>=14
 joblib>=1.2
-tensorflow>=2.11,<2.16
+tensorflow>=2.11
 python-dotenv>=1.0
 # optional / dev
 seaborn>=0.12
