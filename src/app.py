@@ -543,7 +543,7 @@ def render_ring(value, label="PEAK · 3-DAY"):
             </svg>
             <div class="ring-pointer" style="transform:rotate(calc(-90deg + {angle}deg));"></div>
             <div class="ring-mask">
-              <div class="ring-value" style="color:{color};">{value:.0f}</div>
+              <div class="ring-value" style="color:{color};">{value:.1f}</div>
               <div class="ring-label">{label}</div>
             </div>
           </div>
@@ -612,14 +612,14 @@ def render_hero(weather, current_aqi, gauge_value):
     if current_aqi is not None:
         level, _ = aqi_level(current_aqi)
         color = aqi_color(current_aqi)
-        aqi_html = f'<div class="hero-aqi" style="color:{color};">{current_aqi:.0f}</div>'
+        aqi_html = f'<div class="hero-aqi" style="color:{color};">{current_aqi:.1f}</div>'
         level_html = f'<div class="hero-level" style="background:{color};">{level}</div>'
     else:
         aqi_html = '<div class="hero-aqi" style="color:var(--text-dim);">—</div>'
         level_html = ""
 
-    temp_html = f'{weather["temp"]:.0f}°C' if weather["ok"] else "—"
-    wind_html = f'{weather["wind"]:.0f} km/h' if weather["ok"] else "—"
+    temp_html = f'{weather["temp"]:.1f}°C' if weather["ok"] else "—"
+    wind_html = f'{weather["wind"]:.1f} km/h' if weather["ok"] else "—"
     icon = weather_icon(weather["kind"])
 
     st.markdown(
@@ -949,7 +949,7 @@ if submitted and user_email and prediction is not None:
         alert_messages = []
         for i, val in enumerate(prediction[0], start=1):
             level, advice = aqi_level(val)
-            alert_messages.append(f"Day {i}: AQI {val:.0f} ({level})\n{advice}")
+            alert_messages.append(f"Day {i}: AQI {val:.1f} ({level})\n{advice}")
         full_body = (
             "Dear user,\n\nHere is your 3-day AQI forecast:\n\n"
             + "\n\n".join(alert_messages)
@@ -1043,6 +1043,12 @@ with tab_features:
         st.bar_chart(shap_df.set_index("feature"))
 
 # ── History ──
+@st.cache_data(ttl=900, show_spinner=False)
+def load_predictions_log(_predictions_fg):
+    pred_df = _predictions_fg.read()
+    pred_df["prediction_time"] = pd.to_datetime(pred_df["prediction_time"])
+    return pred_df.sort_values("prediction_time")
+
 with tab_history:
     st.markdown('<span class="tag">Historical US AQI · last 72 h</span>', unsafe_allow_html=True)
     if "us_aqi" in df.columns:
@@ -1052,3 +1058,20 @@ with tab_history:
         st.line_chart(history_df.rename(columns={"us_aqi": "Actual AQI"}))
     else:
         st.info("No us_aqi column found in the feature group.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<span class="tag">Predicted AQI (Day 1) · logged history</span>', unsafe_allow_html=True)
+    pred_log = load_predictions_log(predictions_fg)
+    if len(pred_log):
+        pred_chart_df = pred_log[["prediction_time", "aqi_day1"]].set_index("prediction_time")
+        st.line_chart(pred_chart_df.rename(columns={"aqi_day1": "Predicted AQI (Day 1)"}))
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<span class="tag">Browse a previous prediction</span>', unsafe_allow_html=True)
+        options = pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M").tolist()[::-1]
+        selected = st.selectbox("Select prediction time", options)
+        selected_row = pred_log[pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M") == selected].iloc[0]
+        st.write(f"Day 1: {selected_row['aqi_day1']:.1f}  |  Day 2: {selected_row['aqi_day2']:.1f}  |  Day 3: {selected_row['aqi_day3']:.1f}")
+    else:
+        st.info("No predictions logged yet.")
+
