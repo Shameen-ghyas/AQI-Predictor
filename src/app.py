@@ -37,22 +37,22 @@ def inject_css():
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
         :root {
-    --bg: #F0F4F8;
-    --surface: #FFFFFF;
-    --surface-2: #E8F0FE;
-    --border: #D5DEE8;
-    --border-strong: #B8C6D6;
-    --text: #1A2332;
-    --text-muted: #5C6B7F;
-    --text-dim: #8B96A5;
-    --good: #16A34A;
-    --moderate: #CA8A04;
-    --sensitive: #EA580C;
-    --unhealthy: #DC2626;
-    --very: #9333EA;
-    --hazard: #BE185D;
-    --accent: #2563EB;
-}
+            --bg: #0B0E14;
+            --surface: #12161F;
+            --surface-2: #181D28;
+            --border: #252B3A;
+            --border-strong: #323A4D;
+            --text: #E6EAF2;
+            --text-muted: #8B93A7;
+            --text-dim: #5C6578;
+            --good: #22C55E;
+            --moderate: #EAB308;
+            --sensitive: #F97316;
+            --unhealthy: #EF4444;
+            --very: #A855F7;
+            --hazard: #BE185D;
+            --accent: #3B82F6;
+        }
 
         html, body, [class*="css"] {
             color: var(--text);
