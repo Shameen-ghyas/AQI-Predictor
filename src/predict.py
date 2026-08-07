@@ -15,7 +15,7 @@ fs = project.get_feature_store()
 
 fg = fs.get_feature_group(
     name="aqi_daily_features",
-    version=4
+    version=5
 )
 
 df = fg.read()

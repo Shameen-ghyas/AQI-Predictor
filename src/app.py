@@ -11,6 +11,7 @@ import smtplib
 from email.mime.text import MIMEText
 import ssl
 import joblib
+from datetime import datetime
 
 load_dotenv()
 
@@ -810,6 +811,12 @@ def get_scaler(_project):
     model_dir = model.download()
     return joblib.load(os.path.join(model_dir, "scaler.pkl"))
 
+@st.cache_resource(show_spinner=False)
+def get_predictions_fg(_project):
+    fs = _project.get_feature_store()
+    return fs.get_feature_group("aqi_predictions", version=1)
+
+
 
 @st.cache_data(ttl=900, show_spinner=False)
 def load_features(_feature_group):
@@ -871,6 +878,7 @@ with st.spinner("Loading model & scaler (cached after first run)..."):
     scaler = get_scaler(project)
     feature_group = load_feature_group(project)
     model_path = get_model_path(project)
+    predictions_fg = get_predictions_fg(project)
 
 df = load_features(feature_group)
 latest_ts = str(df["time"].max()) if "time" in df.columns and len(df) else "n/a"
@@ -909,6 +917,20 @@ if len(recent_data) >= 24:
         prediction, shap_importance = run_prediction(
             model_path, latest_ts, X_input, background_sequence
         )
+    if prediction is not None and st.session_state.get("logged_for") != latest_ts:
+        log_df = pd.DataFrame({
+            "prediction_time": [datetime.now()],
+            "aqi_day1": [float(prediction[0][0])],
+            "aqi_day2": [float(prediction[0][1])],
+            "aqi_day3": [float(prediction[0][2])],
+            "model_name": ["GRU"],
+            "model_version": [1]
+        })
+        try:
+            predictions_fg.insert(log_df)
+            st.session_state["logged_for"] = latest_ts
+        except Exception as e:
+            st.warning(f"Could not log prediction: {e}")
 
 gauge_value = float(np.max(prediction[0])) if prediction is not None else None
 

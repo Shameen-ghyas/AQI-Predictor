@@ -17,7 +17,7 @@ from utils.results_logger import save_results
 # Connect to Hopsworks and load the feature group
 project = hopsworks.login(api_key_value=API_KEY)
 fs = project.get_feature_store()
-fg = fs.get_feature_group(name="aqi_daily_features", version=4)
+fg = fs.get_feature_group(name="aqi_daily_features", version=5)
 df = fg.read()
 
 # Prepare the data for training
