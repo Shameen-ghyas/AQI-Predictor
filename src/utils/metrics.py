@@ -13,8 +13,7 @@ def evaluate(y_true, y_pred, target_cols):
     per_target = {}
 
     for i, target in enumerate(target_cols):
-
-        # Works for both DataFrame and NumPy array
+        
         if hasattr(y_true, "iloc"):
             true = y_true.iloc[:, i]
         else:

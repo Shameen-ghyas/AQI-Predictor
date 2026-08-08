@@ -28,7 +28,7 @@ from ui_component import (
 load_dotenv()
 
 st.set_page_config(
-    page_title="AQI Pulse — Karachi",
+    page_title="BreatheKhi",
     page_icon="◈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -36,10 +36,8 @@ st.set_page_config(
 
 KARACHI_LAT, KARACHI_LON = 24.8607, 67.0011
 
-
-# ────────────────────────────────────────────────────────────────────────────
 # WEATHER
-# ────────────────────────────────────────────────────────────────────────────
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_weather():
     try:
@@ -61,10 +59,8 @@ def get_weather():
     except Exception:
         return {"temp": None, "wind": None, "kind": "cloudy", "label": "Unavailable", "ok": False}
 
-
-# ────────────────────────────────────────────────────────────────────────────
 # EMAIL
-# ────────────────────────────────────────────────────────────────────────────
+
 def send_alert_email(to_email, subject, body):
     from_email = os.getenv("EMAIL_ADDRESS")
     password = os.getenv("EMAIL_APP_PASSWORD")
@@ -77,10 +73,8 @@ def send_alert_email(to_email, subject, body):
         server.login(from_email, password)
         server.send_message(msg)
 
-
-# ────────────────────────────────────────────────────────────────────────────
 # HOPSWORKS / MODEL (cached)
-# ────────────────────────────────────────────────────────────────────────────
+
 @st.cache_resource(show_spinner=False)
 def connect_to_hopsworks():
     return hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
@@ -153,14 +147,12 @@ def predict_with_gru(model_path, X, background):
 def run_prediction(model_path, latest_ts, _X, _background):
     return predict_with_gru(model_path, _X, _background)
 
-
-# ────────────────────────────────────────────────────────────────────────────
 # APP
-# ────────────────────────────────────────────────────────────────────────────
+
 inject_css()
 
 with st.sidebar:
-    st.markdown("### ◈ AQI PULSE")
+    st.markdown("### ◈ BreatheKhi")
     st.caption("Karachi air-quality telemetry")
     st.markdown("---")
     status_placeholder = st.empty()

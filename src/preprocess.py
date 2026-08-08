@@ -5,7 +5,7 @@ def merge_data(aq_data, weather_data):
     df_aq = pd.DataFrame(aq_data["hourly"])
     df_weather = pd.DataFrame(weather_data["hourly"])
     df = df_aq.merge(df_weather, on="time")
-    df = df.fillna(method="ffill")  # simple fill for missing values
+    df = df.fillna(method="ffill")  # forward fill for missing values
     return df
 
 def handle_lag_nulls(df):

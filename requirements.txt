@@ -11,7 +11,6 @@ pyarrow>=14
 joblib>=1.2
 tensorflow>=2.11
 python-dotenv>=1.0
-# optional / dev
 seaborn>=0.12
 pytest>=7.0
 streamlit

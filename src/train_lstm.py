@@ -12,7 +12,6 @@ from utils.plots import (
 from utils.results_logger import save_results
 
 df = pd.read_csv(DATA_DIR / "raw_data.csv")
-# print(df.head())
 
 # Define the features and target
 
@@ -31,7 +30,6 @@ y_train = train[target_cols]
 y_test = test[target_cols]
 
 # Scale the features using MinMaxScaler
-
 scaler = MinMaxScaler()
 
 X_train = pd.DataFrame(
@@ -44,7 +42,6 @@ X_test = pd.DataFrame(
     columns=X_test.columns
 )
 # Create sequences
-
 sequence_length = 24
 
 X_train_seq, y_train_seq = create_sequences(
@@ -60,7 +57,6 @@ X_test_seq, y_test_seq = create_sequences(
 )
 
 # create and compile the LSTM model
-
 model = get_model(
     input_shape=(X_train_seq.shape[1], X_train_seq.shape[2])
 )

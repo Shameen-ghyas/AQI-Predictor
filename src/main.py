@@ -14,23 +14,24 @@ if __name__ == "__main__":
     # Try API
     aq_data = safe_api_call("https://air-quality-api.open-meteo.com/v1/air-quality",
                             {"latitude": LAT, "longitude": LON, "hourly": ( "pm10,"
-    "pm2_5,"
-    "carbon_monoxide,"
-    "nitrogen_dioxide,"
-    "sulphur_dioxide,"
-    "ozone,"
-    "us_aqi"),
+                            "pm2_5,"
+                            "carbon_monoxide,"
+                            "nitrogen_dioxide,"
+                            "sulphur_dioxide,"
+                            "ozone,"
+                            "us_aqi"),
                              "start_date": start_date, "end_date": end_date, "timezone": "auto"})
+    
     weather_data = safe_api_call("https://archive-api.open-meteo.com/v1/archive",
                                  {"latitude": LAT, "longitude": LON, "hourly": (    "temperature_2m,"
-    "relative_humidity_2m,"
-    "dew_point_2m,"
-    "precipitation,"
-    "surface_pressure,"
-    "cloud_cover,"
-    "wind_speed_10m,"
-    "wind_direction_10m"
-),
+                                    "relative_humidity_2m,"
+                                    "dew_point_2m,"
+                                    "precipitation,"
+                                    "surface_pressure,"
+                                    "cloud_cover,"
+                                    "wind_speed_10m,"
+                                    "wind_direction_10m"
+                                ),
                                   "start_date": start_date, "end_date": end_date, "timezone": "auto"})
 
     if aq_data and weather_data:
