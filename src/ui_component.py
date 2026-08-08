@@ -1,45 +1,9 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
-import hopsworks
-import os
-import requests
-from dotenv import load_dotenv
-import smtplib
-from email.mime.text import MIMEText
-import ssl
-import joblib
-from datetime import datetime
-import shap
-from tensorflow.keras.models import load_model
-
-from ui_component import (
-    inject_css,
-    aqi_level,
-    render_hero,
-    build_recommendations,
-    render_recommendation_cards,
-    render_day_card,
-    categorize_features,
-    render_metric_tiles,
-    classify_weather,
-)
-
-load_dotenv()
-
-st.set_page_config(
-    page_title="AQI Pulse — Karachi",
-    page_icon="◈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-KARACHI_LAT, KARACHI_LON = 24.8607, 67.0011
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# THEME — Professional telemetry dashboard (Grafana / Datadog / Bloomberg style)
-# Dense, functional, flat dark surface. Color is reserved for AQI severity.
+# THEME
 # ────────────────────────────────────────────────────────────────────────────
 def inject_css():
     st.markdown(
@@ -48,22 +12,22 @@ def inject_css():
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
         :root {
-            --bg: #0B0E14;
-            --surface: #12161F;
-            --surface-2: #181D28;
-            --border: #252B3A;
-            --border-strong: #323A4D;
-            --text: #E6EAF2;
-            --text-muted: #8B93A7;
-            --text-dim: #5C6578;
-            --good: #22C55E;
-            --moderate: #EAB308;
-            --sensitive: #F97316;
-            --unhealthy: #EF4444;
-            --very: #A855F7;
-            --hazard: #BE185D;
-            --accent: #3B82F6;
-        }
+    --bg: #0B0E14;
+    --surface: #12161F;
+    --surface-2: #181D28;
+    --border: #252B3A;
+    --border-strong: #323A4D;
+    --text: #E6EAF2;
+    --text-muted: #8B93A7;
+    --text-dim: #5C6578;
+    --good: #22C55E;
+    --moderate: #EAB308;
+    --sensitive: #F97316;
+    --unhealthy: #EF4444;
+    --very: #A855F7;
+    --hazard: #BE185D;
+    --accent: #3B82F6;
+}
 
         html, body, [class*="css"] {
             color: var(--text);
@@ -71,12 +35,12 @@ def inject_css():
             font-size: 14px;
         }
         .ring-svg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 160px;
-    height: 160px;
-}
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 160px;
+            height: 160px;
+        }
         .ring-svg path {
             cursor: pointer;
             transition: opacity 0.15s;
@@ -122,7 +86,6 @@ def inject_css():
             border-radius: 4px !important;
         }
 
-        /* Tabs */
         button[data-baseweb="tab"] {
             font-family: 'IBM Plex Sans', sans-serif;
             font-weight: 600;
@@ -139,7 +102,6 @@ def inject_css():
             border-bottom: 1px solid var(--border);
         }
 
-        /* Utility */
         .tag {
             display: inline-block;
             font-family: 'IBM Plex Mono', monospace;
@@ -174,7 +136,6 @@ def inject_css():
             padding: 14px 16px;
         }
 
-        /* ── Hero ── */
         .hero {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -243,7 +204,6 @@ def inject_css():
             margin-bottom: 6px;
         }
 
-        /* ── Spectrum ring (focal) ── */
         .ring-box {
             display: flex;
             flex-direction: column;
@@ -253,20 +213,6 @@ def inject_css():
             width: 160px;
             height: 160px;
             position: relative;
-        }
-        .ring {
-            width: 160px;
-            height: 160px;
-            border-radius: 50%;
-            position: absolute;
-            top: 0; left: 0;
-            background: conic-gradient(from 0deg,
-                var(--good) 0deg 36deg,
-                var(--moderate) 36deg 72deg,
-                var(--sensitive) 72deg 108deg,
-                var(--unhealthy) 108deg 144deg,
-                var(--very) 144deg 216deg,
-                var(--hazard) 216deg 360deg);
         }
         .ring-mask {
             position: absolute;
@@ -314,7 +260,6 @@ def inject_css():
             padding: 0 6px;
         }
 
-        /* ── Metric tiles ── */
         .tile {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -338,15 +283,7 @@ def inject_css():
             line-height: 1.15;
             color: var(--text);
         }
-        .tile-unit {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 12px;
-            font-weight: 400;
-            color: var(--text-dim);
-            margin-left: 2px;
-        }
 
-        /* ── Day forecast cards ── */
         .day-card {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -384,7 +321,6 @@ def inject_css():
             color: #0B0E14;
         }
 
-        /* ── Recommendation / alert cards ── */
         .rec-card {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -411,7 +347,6 @@ def inject_css():
             margin-top: 4px;
         }
 
-        /* ── Status ── */
         .status-row {
             display: flex;
             align-items: center;
@@ -429,7 +364,6 @@ def inject_css():
             flex-shrink: 0;
         }
 
-        /* ── SHAP bars ── */
         .shap-row {
             margin-bottom: 10px;
         }
@@ -451,7 +385,6 @@ def inject_css():
             background: linear-gradient(90deg, var(--good), var(--moderate), var(--unhealthy));
         }
 
-        /* Streamlit overrides for density */
         .stTabs [data-baseweb="tab-panel"] {
             padding-top: 12px;
         }
@@ -482,7 +415,6 @@ LEVEL_COLORS = {
     "Hazardous": "var(--hazard)",
 }
 
-# Simplified mapping used by aqi_level (matches original thresholds)
 LEVEL_COLORS_SIMPLE = {
     "Good": "var(--good)",
     "Unhealthy": "var(--sensitive)",
@@ -511,43 +443,32 @@ def aqi_color(value):
     return LEVEL_COLORS.get(level, LEVEL_COLORS_SIMPLE.get(level, "var(--text)"))
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# SPECTRUM RING
-# ────────────────────────────────────────────────────────────────────────────
 def render_ring(value, label="PEAK · 3-DAY"):
     value = max(0, min(float(value), 500))
     angle = (value / 500.0) * 360
     level, _ = aqi_level(value)
     color = aqi_color(value)
 
-    # SVG arcs (start/end angles match the original conic-gradient)
-    # Each <title> becomes the hover tooltip
     st.markdown(
         f"""
         <div class="ring-box">
           <div class="ring-wrap">
             <svg class="ring-svg" viewBox="0 0 160 160" width="160" height="160">
-              <!-- Good 0-50 -->
               <path d="M80,80 L80,8 A72,72 0 0,1 130.2,28.8 Z" fill="var(--good)">
                 <title>Good · AQI 0–50 · Air quality is satisfactory</title>
               </path>
-              <!-- Moderate 51-100 -->
               <path d="M80,80 L130.2,28.8 A72,72 0 0,1 151.2,80 Z" fill="var(--moderate)">
                 <title>Moderate · AQI 51–100 · Acceptable; sensitive people may notice</title>
               </path>
-              <!-- Sensitive 101-150 -->
               <path d="M80,80 L151.2,80 A72,72 0 0,1 130.2,131.2 Z" fill="var(--sensitive)">
                 <title>Unhealthy for Sensitive Groups · AQI 101–150</title>
               </path>
-              <!-- Unhealthy 151-200 -->
               <path d="M80,80 L130.2,131.2 A72,72 0 0,1 80,152 Z" fill="var(--unhealthy)">
                 <title>Unhealthy · AQI 151–200 · Everyone may experience effects</title>
               </path>
-              <!-- Very Unhealthy 201-300 -->
               <path d="M80,80 L80,152 A72,72 0 0,1 28.8,131.2 Z" fill="var(--very)">
                 <title>Very Unhealthy · AQI 201–300 · Health warnings of emergency conditions</title>
               </path>
-              <!-- Hazardous 301-500 -->
               <path d="M80,80 L28.8,131.2 A72,72 0 0,1 80,8 Z" fill="var(--hazard)">
                 <title>Hazardous · AQI 301–500 · Serious health effects for everyone</title>
               </path>
@@ -564,33 +485,25 @@ def render_ring(value, label="PEAK · 3-DAY"):
     )
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# WEATHER
-# ────────────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=1800, show_spinner=False)
-def get_weather():
-    try:
-        url = (
-            f"https://api.open-meteo.com/v1/forecast?latitude={KARACHI_LAT}"
-            f"&longitude={KARACHI_LON}&current_weather=true"
-        )
-        r = requests.get(url, timeout=6)
-        r.raise_for_status()
-        cw = r.json()["current_weather"]
-        kind, label = classify_weather(int(cw["weathercode"]))
-        return {
-            "temp": cw["temperature"],
-            "wind": cw["windspeed"],
-            "kind": kind,
-            "label": label,
-            "ok": True,
-        }
-    except Exception:
-        return {"temp": None, "wind": None, "kind": "cloudy", "label": "Unavailable", "ok": False}
+WEATHER_CODE_MAP = {
+    range(0, 1): ("clear", "Clear"),
+    range(1, 4): ("cloudy", "Partly cloudy"),
+    range(45, 49): ("fog", "Fog"),
+    range(51, 68): ("rain", "Drizzle / rain"),
+    range(71, 78): ("rain", "Snow"),
+    range(80, 83): ("rain", "Showers"),
+    range(95, 100): ("rain", "Thunderstorm"),
+}
+
+
+def classify_weather(code):
+    for r, (kind, label) in WEATHER_CODE_MAP.items():
+        if code in r:
+            return kind, label
+    return "cloudy", "Overcast"
 
 
 def weather_icon(kind):
-    # Consistent simple symbols (no mixed emoji styles)
     icons = {
         "clear": "☀",
         "cloudy": "☁",
@@ -601,7 +514,6 @@ def weather_icon(kind):
 
 
 def render_hero(weather, current_aqi, gauge_value):
-    # Current AQI from latest reading
     if current_aqi is not None:
         level, _ = aqi_level(current_aqi)
         color = aqi_color(current_aqi)
@@ -641,9 +553,6 @@ def render_hero(weather, current_aqi, gauge_value):
     st.markdown("</div></div></div>", unsafe_allow_html=True)
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# RECOMMENDATIONS
-# ────────────────────────────────────────────────────────────────────────────
 def build_recommendations(worst_aqi, weather_kind):
     recs = []
     level, _ = aqi_level(worst_aqi)
@@ -699,7 +608,7 @@ def render_day_card(day, value):
         f"""
         <div class="day-card" style="--day-color:{color};">
             <div class="day-label">Day {day}</div>
-            <div class="day-value">{value:.0f}</div>
+            <div class="day-value">{value:.1f}</div>
             <div class="day-level">{level}</div>
         </div>
         """,
@@ -707,9 +616,6 @@ def render_day_card(day, value):
     )
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# FEATURE CATEGORIES
-# ────────────────────────────────────────────────────────────────────────────
 def categorize_features(feature_cols):
     pollutants = []
     weather = []
@@ -757,337 +663,3 @@ def render_metric_tiles(latest, cols_list, n_cols=4):
                 """,
                 unsafe_allow_html=True,
             )
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# EMAIL
-# ────────────────────────────────────────────────────────────────────────────
-def send_alert_email(to_email, subject, body):
-    from_email = os.getenv("EMAIL_ADDRESS")
-    password = os.getenv("EMAIL_APP_PASSWORD")
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = from_email
-    msg["To"] = to_email
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-        server.login(from_email, password)
-        server.send_message(msg)
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# HOPSWORKS / MODEL (cached)
-# ────────────────────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner=False)
-def connect_to_hopsworks():
-    return hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
-
-
-@st.cache_resource(show_spinner=False)
-def load_feature_group(_project):
-    fs = _project.get_feature_store()
-    return fs.get_feature_group("aqi_daily_features", version=5)
-
-
-@st.cache_resource(show_spinner=False)
-def get_model_path(_project):
-    mr = _project.get_model_registry()
-    model = mr.get_model("aqi_predictor_gru", version=1)
-    model_dir = model.download()
-    return os.path.join(model_dir, "gru_model.h5")
-
-
-@st.cache_resource(show_spinner=False)
-def get_scaler(_project):
-    mr = _project.get_model_registry()
-    model = mr.get_model("aqi_scaler", version=1)
-    model_dir = model.download()
-    return joblib.load(os.path.join(model_dir, "scaler.pkl"))
-
-
-@st.cache_resource(show_spinner=False)
-def get_predictions_fg(_project):
-    fs = _project.get_feature_store()
-    return fs.get_feature_group("aqi_predictions", version=1)
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def load_features(_feature_group):
-    from datetime import timedelta
-    cutoff = datetime.utcnow() - timedelta(hours=150)
-    query = _feature_group.filter(_feature_group.time >= cutoff)
-    df = query.read()
-    df["time"] = pd.to_datetime(df["time"])
-    return df.sort_values("time").reset_index(drop=True)
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def load_predictions_log(_predictions_fg):
-    pred_df = _predictions_fg.read()
-    pred_df["prediction_time"] = pd.to_datetime(pred_df["prediction_time"])
-    return pred_df.sort_values("prediction_time")
-
-
-@st.cache_resource(show_spinner=False)
-def load_gru_model(model_path):
-    return load_model(model_path, compile=False)
-
-
-def predict_with_gru(model_path, X, background):
-    model = load_gru_model(model_path)
-    prediction = model.predict(X, verbose=0)
-
-    explainer = shap.GradientExplainer(model, background)
-    shap_values = explainer.shap_values(X)
-
-    shap_array = np.array(shap_values)
-    mean_importance = np.mean(np.abs(shap_array), axis=(0, 1, 3)).tolist()
-
-    return prediction, mean_importance
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def run_prediction(model_path, latest_ts, _X, _background):
-    return predict_with_gru(model_path, _X, _background)
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# APP
-# ────────────────────────────────────────────────────────────────────────────
-inject_css()
-
-with st.sidebar:
-    st.markdown("### ◈ AQI PULSE")
-    st.caption("Karachi air-quality telemetry")
-    st.markdown("---")
-    status_placeholder = st.empty()
-    st.markdown("---")
-    if st.button("↻ Refresh data", use_container_width=True):
-        load_features.clear()
-        run_prediction.clear()
-        get_weather.clear()
-        st.rerun()
-
-weather = get_weather()
-
-with st.spinner("Connecting to station..."):
-    project = connect_to_hopsworks()
-with st.spinner("Loading model & scaler (cached after first run)..."):
-    scaler = get_scaler(project)
-    feature_group = load_feature_group(project)
-    model_path = get_model_path(project)
-    predictions_fg = get_predictions_fg(project)
-
-df = load_features(feature_group)
-latest_ts = str(df["time"].max()) if "time" in df.columns and len(df) else "n/a"
-
-with st.sidebar:
-    status_placeholder.markdown(
-        f"""
-        <div class="status-row"><span class="dot"></span> Hopsworks connected</div>
-        <div class="status-row"><span class="dot"></span> Scaler + model ready</div>
-        <div class="status-row"><span class="dot"></span> Data synced · {latest_ts}</div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-    st.markdown("**Hazard alerts**")
-    with st.form("alert_form", clear_on_submit=False):
-        user_email = st.text_input(
-            "Email for AQI alerts",
-            placeholder="you@example.com",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Send this forecast", use_container_width=True)
-    st.caption("Sends the current 3-day forecast once. Does not auto-resend.")
-
-feature_cols = [c for c in df.columns if c not in ["time", "aqi_day1", "aqi_day2", "aqi_day3"]]
-recent_data = df[feature_cols].tail(24)
-
-prediction, shap_importance = None, None
-if len(recent_data) >= 24:
-    X_scaled = scaler.transform(recent_data)
-    X_input = np.expand_dims(X_scaled, axis=0)
-    background_data = df[feature_cols].tail(100).head(24)
-    background_scaled = scaler.transform(background_data)
-    background_sequence = np.expand_dims(background_scaled, axis=0)
-    with st.spinner("Running forecast model..."):
-        prediction, shap_importance = run_prediction(
-            model_path, latest_ts, X_input, background_sequence
-        )
-    if prediction is not None and st.session_state.get("logged_for") != latest_ts:
-        log_df = pd.DataFrame({
-            "prediction_time": [datetime.now()],
-            "aqi_day1": [float(prediction[0][0])],
-            "aqi_day2": [float(prediction[0][1])],
-            "aqi_day3": [float(prediction[0][2])],
-            "model_name": ["GRU"],
-            "model_version": [1]
-        })
-        try:
-            predictions_fg.insert(log_df)
-            st.session_state["logged_for"] = latest_ts
-        except Exception as e:
-            st.warning(f"Could not log prediction: {e}")
-
-gauge_value = float(np.max(prediction[0])) if prediction is not None else None
-
-current_aqi = None
-if len(df) and "us_aqi" in df.columns:
-    current_aqi = float(df["us_aqi"].iloc[-1])
-elif len(df) and "aqi" in df.columns:
-    current_aqi = float(df["aqi"].iloc[-1])
-
-render_hero(weather, current_aqi, gauge_value)
-
-if submitted and user_email and prediction is not None:
-    if st.session_state.get("alert_sent_for") != (latest_ts, user_email):
-        alert_messages = []
-        for i, val in enumerate(prediction[0], start=1):
-            level, advice = aqi_level(val)
-            alert_messages.append(f"Day {i}: AQI {val:.1f} ({level})\n{advice}")
-            alert_messages.append(f"Day {i}: AQI {val:.1f} ({level})\n{advice}")
-        full_body = (
-            "Dear user,\n\nHere is your 3-day AQI forecast:\n\n"
-            + "\n\n".join(alert_messages)
-            + "\n\nRegards,\nAQI Predictor"
-        )
-        try:
-            send_alert_email(user_email, "Your 3-Day AQI Forecast", full_body)
-            st.session_state["alert_sent_for"] = (latest_ts, user_email)
-            st.toast(f"Forecast emailed to {user_email}", icon="✅")
-        except Exception as e:
-            st.error(f"Could not send alert email: {e}")
-
-tab_overview, tab_forecast, tab_features, tab_history = st.tabs(
-    ["Overview", "Forecast", "Feature insights", "History"]
-)
-
-with tab_overview:
-    st.markdown('<span class="tag">Latest sensor snapshot</span>', unsafe_allow_html=True)
-
-    if len(df):
-        latest = df.iloc[-1]
-        categories = categorize_features(feature_cols)
-
-        for cat_name, cols_list in categories.items():
-            if not cols_list:
-                continue
-            st.markdown(f'<div class="section-header">{cat_name}</div>', unsafe_allow_html=True)
-            render_metric_tiles(latest, cols_list, n_cols=5)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        if prediction is not None:
-            st.markdown('<span class="tag">Recommended actions</span>', unsafe_allow_html=True)
-            render_recommendation_cards(build_recommendations(gauge_value, weather["kind"]))
-        else:
-            st.info("Need 24 hours of recent data for a prediction.")
-
-        with st.expander("Raw latest rows"):
-            st.dataframe(df.tail(10), use_container_width=True)
-    else:
-        st.warning("No feature data available.")
-
-with tab_forecast:
-    if prediction is None:
-        st.warning("Not enough recent data (need 24 hours) to make a prediction.")
-    else:
-        st.markdown('<span class="tag">3-day AQI forecast</span>', unsafe_allow_html=True)
-        day_cols = st.columns(len(prediction[0]))
-        for i, val in enumerate(prediction[0], start=1):
-            with day_cols[i - 1]:
-                render_day_card(i, val)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<span class="tag">Precautions</span>', unsafe_allow_html=True)
-        render_recommendation_cards(build_recommendations(gauge_value, weather["kind"]))
-
-with tab_features:
-    if shap_importance is None:
-        st.info("Feature importance appears once a forecast is generated.")
-    else:
-        st.markdown('<span class="tag">SHAP · drivers of current forecast</span>', unsafe_allow_html=True)
-        shap_df = pd.DataFrame(
-            {"feature": feature_cols, "importance": shap_importance}
-        ).sort_values("importance", ascending=False)
-
-        max_imp = shap_df["importance"].abs().max() or 1
-        for _, row in shap_df.iterrows():
-            pct = abs(row["importance"]) / max_imp * 100
-            st.markdown(
-                f"""
-                <div class="shap-row">
-                  <div class="shap-meta">
-                    <span>{row['feature'].replace('_', ' ')}</span>
-                    <span style="color:var(--text-muted);">{row['importance']:.3f}</span>
-                  </div>
-                  <div class="shap-bar-bg">
-                    <div class="shap-bar-fill" style="width:{pct:.0f}%;"></div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with st.expander("Full importance table"):
-            st.dataframe(
-                shap_df.style.background_gradient(cmap="viridis", subset=["importance"]),
-                use_container_width=True,
-            )
-        st.bar_chart(shap_df.set_index("feature"))
-
-# ── History ──
-@st.cache_data(ttl=900, show_spinner=False)
-def load_predictions_log(_predictions_fg):
-    pred_df = _predictions_fg.read()
-    pred_df["prediction_time"] = pd.to_datetime(pred_df["prediction_time"])
-    return pred_df.sort_values("prediction_time")
-
-with tab_history:
-    st.markdown('<span class="tag">Actual vs Predicted AQI</span>', unsafe_allow_html=True)
-
-    combined_df = pd.DataFrame()
-
-    if "us_aqi" in df.columns:
-        actual_df = df[["time", "us_aqi"]].tail(72).copy()
-        actual_df["time"] = pd.to_datetime(actual_df["time"])
-        actual_df = actual_df.rename(columns={"us_aqi": "Actual AQI"}).set_index("time")
-        combined_df = actual_df
-
-    pred_log = load_predictions_log(predictions_fg)
-    if len(pred_log):
-        pred_df = pred_log[["prediction_time", "aqi_day1"]].copy()
-        pred_df = pred_df.rename(columns={"prediction_time": "time", "aqi_day1": "Predicted AQI"}).set_index("time")
-        combined_df = combined_df.join(pred_df, how="outer") if len(combined_df) else pred_df
-
-    if len(combined_df):
-        st.line_chart(combined_df, color=["#DC2626", "#2563EB"])
-    else:
-        st.info("Not enough data to show the comparison chart.")
-
-    if len(pred_log):
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<span class="tag">Browse a previous prediction</span>', unsafe_allow_html=True)
-        options = pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M").tolist()[::-1]
-        selected = st.selectbox("Select prediction time", options)
-        selected_row = pred_log[pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M") == selected].iloc[0]
-        st.write(f"Day 1: {selected_row['aqi_day1']:.1f}  |  Day 2: {selected_row['aqi_day2']:.1f}  |  Day 3: {selected_row['aqi_day3']:.1f}")
-    else:
-        st.info("No us_aqi column found in the feature group.")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<span class="tag">Predicted AQI (Day 1) · logged history</span>', unsafe_allow_html=True)
-    pred_log = load_predictions_log(predictions_fg)
-    if len(pred_log):
-        pred_chart_df = pred_log[["prediction_time", "aqi_day1"]].set_index("prediction_time")
-        st.line_chart(pred_chart_df.rename(columns={"aqi_day1": "Predicted AQI (Day 1)"}))
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<span class="tag">Browse a previous prediction</span>', unsafe_allow_html=True)
-        options = pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M").tolist()[::-1]
-        selected = st.selectbox("Select prediction time", options)
-        selected_row = pred_log[pred_log["prediction_time"].dt.strftime("%Y-%m-%d %H:%M") == selected].iloc[0]
-        st.write(f"Day 1: {selected_row['aqi_day1']:.1f}  |  Day 2: {selected_row['aqi_day2']:.1f}  |  Day 3: {selected_row['aqi_day3']:.1f}")
-    else:
-        st.info("No predictions logged yet.")
-
