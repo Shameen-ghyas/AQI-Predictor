@@ -13,7 +13,7 @@ from datetime import datetime
 import shap
 from tensorflow.keras.models import load_model
 
-from ui_components import (
+from ui_component import (
     inject_css,
     aqi_level,
     render_hero,
